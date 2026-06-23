@@ -2,6 +2,8 @@ const express = require('express');
 const cors = require('cors');
 require('dotenv').config();
 const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
+const dns = require("node:dns");
+dns.setServers(["8.8.8.8", "8.8.4.4"]);
 
 const app = express();
 const port = process.env.PORT || 5000;
@@ -9,7 +11,6 @@ const port = process.env.PORT || 5000;
 app.use(cors());
 app.use(express.json());
 
-// Test route
 app.get('/', (req, res) => {
     res.send('Fable Server is running!');
 });
@@ -26,19 +27,19 @@ client.connect(() => {
     console.log('Connected to MongoDB!');
 }).catch(console.dir);
 
-const db = client.db(process.env.DB_NAME);
+const db     = client.db(process.env.DB_NAME);
+const authDb = client.db(process.env.AUTH_DB_NAME);
 
 // Collections
 const ebookCollection       = db.collection('ebooks');
-const userCollection        = db.collection('users');
+const userCollection        = authDb.collection('user');
 const purchaseCollection    = db.collection('purchases');
 const bookmarkCollection    = db.collection('bookmarks');
 const transactionCollection = db.collection('transactions');
+const sessionCollection     = authDb.collection('session');
 
-// Session collection 
-const sessionCollection = db.collection('session');
+// ─── MIDDLEWARES ─────────────────────────────────────────────
 
-// verifyToken middleware
 const verifyToken = async (req, res, next) => {
     const authHeader = req.headers?.authorization;
     if (!authHeader) {
@@ -64,7 +65,6 @@ const verifyToken = async (req, res, next) => {
     next();
 };
 
-// verifyAdmin middleware
 const verifyAdmin = async (req, res, next) => {
     if (req.user?.role !== 'admin') {
         return res.status(403).send({ message: 'Forbidden access' });
@@ -72,7 +72,6 @@ const verifyAdmin = async (req, res, next) => {
     next();
 };
 
-// verifyWriter middleware
 const verifyWriter = async (req, res, next) => {
     if (req.user?.role !== 'writer') {
         return res.status(403).send({ message: 'Forbidden access' });
@@ -94,7 +93,7 @@ app.get('/api/ebooks', async (req, res) => {
             ];
         }
 
-        if (req.query.genre)        query.genre        = req.query.genre;
+        if (req.query.genre) query.genre = req.query.genre;
         if (req.query.availability === 'available') query.isSold = false;
         if (req.query.availability === 'sold')      query.isSold = true;
 
@@ -104,15 +103,13 @@ app.get('/api/ebooks', async (req, res) => {
             if (req.query.maxPrice) query.price.$lte = parseFloat(req.query.maxPrice);
         }
 
-        // Sorting
         let sortOption = { createdAt: -1 };
         if (req.query.sort === 'price_asc')  sortOption = { price: 1 };
         if (req.query.sort === 'price_desc') sortOption = { price: -1 };
 
-        // Pagination
-        const page     = parseInt(req.query.page) || 1;
-        const perPage  = parseInt(req.query.perPage) || 12;
-        const skip     = (page - 1) * perPage;
+        const page    = parseInt(req.query.page) || 1;
+        const perPage = parseInt(req.query.perPage) || 12;
+        const skip    = (page - 1) * perPage;
 
         const total  = await ebookCollection.countDocuments(query);
         const ebooks = await ebookCollection
@@ -128,7 +125,7 @@ app.get('/api/ebooks', async (req, res) => {
     }
 });
 
-// GET featured ebooks (latest 6)
+// GET featured ebooks — :id এর আগে থাকতে হবে
 app.get('/api/ebooks/featured', async (req, res) => {
     try {
         const ebooks = await ebookCollection
@@ -186,7 +183,7 @@ app.post('/api/ebooks', verifyToken, verifyWriter, async (req, res) => {
 });
 
 // PATCH update ebook
-app.patch('/api/ebooks/:id', verifyToken, verifyWriter, async (req, res) => {
+app.patch('/api/ebooks/:id', async (req, res) => {
     try {
         const result = await ebookCollection.updateOne(
             { _id: new ObjectId(req.params.id) },
@@ -199,7 +196,7 @@ app.patch('/api/ebooks/:id', verifyToken, verifyWriter, async (req, res) => {
 });
 
 // DELETE ebook
-app.delete('/api/ebooks/:id', verifyToken, verifyWriter, async (req, res) => {
+app.delete('/api/ebooks/:id', verifyToken, async (req, res) => {
     try {
         const result = await ebookCollection.deleteOne({
             _id: new ObjectId(req.params.id)
@@ -212,17 +209,23 @@ app.delete('/api/ebooks/:id', verifyToken, verifyWriter, async (req, res) => {
 
 // ─── PURCHASES API ───────────────────────────────────────────
 
-// GET user purchases
+// GET purchases
 app.get('/api/purchases', verifyToken, async (req, res) => {
     try {
         const query = {};
+
         if (req.query.userId) {
-            if (req.user._id.toString() !== req.query.userId &&
-                req.user.role !== 'admin') {
+            if (
+                req.user._id.toString() !== req.query.userId &&
+                req.user.role !== 'admin'
+            ) {
                 return res.status(403).send({ message: 'Forbidden access' });
             }
             query.userId = req.query.userId;
         }
+
+        if (req.query.writerId) query.writerId = req.query.writerId;
+
         const purchases = await purchaseCollection
             .find(query)
             .sort({ createdAt: -1 })
@@ -246,8 +249,8 @@ app.post('/api/purchases', async (req, res) => {
 
 // ─── BOOKMARKS API ───────────────────────────────────────────
 
-// GET user bookmarks
-app.get('/api/bookmarks', async (req, res) => {
+// GET bookmarks
+app.get('/api/bookmarks', verifyToken, async (req, res) => {
     try {
         const bookmarks = await bookmarkCollection
             .find({ userId: req.query.userId })
@@ -259,7 +262,7 @@ app.get('/api/bookmarks', async (req, res) => {
 });
 
 // POST add bookmark
-app.post('/api/bookmarks', async (req, res) => {
+app.post('/api/bookmarks', verifyToken, async (req, res) => {
     try {
         const exists = await bookmarkCollection.findOne({
             userId:  req.body.userId,
@@ -277,8 +280,8 @@ app.post('/api/bookmarks', async (req, res) => {
     }
 });
 
-// DELETE remove bookmark
-app.delete('/api/bookmarks/:id', async (req, res) => {
+// DELETE bookmark
+app.delete('/api/bookmarks/:id', verifyToken, async (req, res) => {
     try {
         const result = await bookmarkCollection.deleteOne({
             _id: new ObjectId(req.params.id)
@@ -291,7 +294,7 @@ app.delete('/api/bookmarks/:id', async (req, res) => {
 
 // ─── TRANSACTIONS API ────────────────────────────────────────
 
-// GET all transactions (admin)
+// GET all transactions
 app.get('/api/transactions', verifyToken, verifyAdmin, async (req, res) => {
     try {
         const transactions = await transactionCollection
@@ -317,35 +320,36 @@ app.post('/api/transactions', async (req, res) => {
     }
 });
 
-// ─── STATS API (Admin) ───────────────────────────────────────
+// ─── STATS API ───────────────────────────────────────────────
 
-// GET dashboard stats
 app.get('/api/stats', async (req, res) => {
     try {
-        const totalEbooks      = await ebookCollection.countDocuments();
-        const totalSold        = await purchaseCollection.countDocuments();
+        const totalEbooks       = await ebookCollection.countDocuments();
+        const totalSold         = await purchaseCollection.countDocuments();
         const totalTransactions = await transactionCollection.find().toArray();
-        const totalRevenue     = totalTransactions.reduce((sum, t) => sum + (t.amount || 0), 0);
+        const totalRevenue      = totalTransactions.reduce(
+            (sum, t) => sum + (t.amount || 0), 0
+        );
 
-        // Ebooks by genre
         const genrePipeline = [
             { $group: { _id: '$genre', count: { $sum: 1 } } },
             { $project: { genre: '$_id', count: 1, _id: 0 } },
             { $sort: { count: -1 } }
         ];
-        const ebooksByGenre = await ebookCollection.aggregate(genrePipeline).toArray();
+        const ebooksByGenre = await ebookCollection
+            .aggregate(genrePipeline).toArray();
 
-        // Monthly sales
         const salesPipeline = [
             {
                 $group: {
-                    _id: { $month: '$createdAt' },
+                    _id:   { $month: '$createdAt' },
                     sales: { $sum: '$amount' }
                 }
             },
             { $sort: { '_id': 1 } }
         ];
-        const monthlySales = await transactionCollection.aggregate(salesPipeline).toArray();
+        const monthlySales = await transactionCollection
+            .aggregate(salesPipeline).toArray();
 
         res.send({ totalEbooks, totalSold, totalRevenue, ebooksByGenre, monthlySales });
     } catch (err) {
@@ -358,7 +362,13 @@ app.get('/api/stats', async (req, res) => {
 app.get('/api/writers/top', async (req, res) => {
     try {
         const pipeline = [
-            { $group: { _id: '$writerId', writerName: { $first: '$writerName' }, totalSales: { $sum: 1 } } },
+            {
+                $group: {
+                    _id:        '$writerId',
+                    writerName: { $first: '$writerName' },
+                    totalSales: { $sum: 1 }
+                }
+            },
             { $sort: { totalSales: -1 } },
             { $limit: 3 }
         ];
@@ -368,6 +378,8 @@ app.get('/api/writers/top', async (req, res) => {
         res.status(500).send({ message: err.message });
     }
 });
+
+// ─── USERS API ───────────────────────────────────────────────
 
 // GET all users
 app.get('/api/users', verifyToken, verifyAdmin, async (req, res) => {
