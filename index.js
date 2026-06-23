@@ -320,6 +320,41 @@ app.get('/api/writers/top', async (req, res) => {
     }
 });
 
+// GET all users
+app.get('/api/users', async (req, res) => {
+    try {
+        const users = await userCollection.find().toArray();
+        res.send(users);
+    } catch (err) {
+        res.status(500).send({ message: err.message });
+    }
+});
+
+// PATCH update user role
+app.patch('/api/users/:id', async (req, res) => {
+    try {
+        const result = await userCollection.updateOne(
+            { _id: new ObjectId(req.params.id) },
+            { $set: req.body }
+        );
+        res.send(result);
+    } catch (err) {
+        res.status(500).send({ message: err.message });
+    }
+});
+
+// DELETE user
+app.delete('/api/users/:id', async (req, res) => {
+    try {
+        const result = await userCollection.deleteOne({
+            _id: new ObjectId(req.params.id)
+        });
+        res.send(result);
+    } catch (err) {
+        res.status(500).send({ message: err.message });
+    }
+});
+
 // Export for Vercel
 module.exports = app;
 
