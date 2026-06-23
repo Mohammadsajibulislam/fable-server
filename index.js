@@ -35,6 +35,51 @@ const purchaseCollection    = db.collection('purchases');
 const bookmarkCollection    = db.collection('bookmarks');
 const transactionCollection = db.collection('transactions');
 
+// Session collection 
+const sessionCollection = db.collection('session');
+
+// verifyToken middleware
+const verifyToken = async (req, res, next) => {
+    const authHeader = req.headers?.authorization;
+    if (!authHeader) {
+        return res.status(401).send({ message: 'Unauthorized access' });
+    }
+
+    const token = authHeader.split(' ')[1];
+    if (!token) {
+        return res.status(401).send({ message: 'Unauthorized access' });
+    }
+
+    const session = await sessionCollection.findOne({ token });
+    if (!session) {
+        return res.status(401).send({ message: 'Unauthorized access' });
+    }
+
+    const user = await userCollection.findOne({ _id: session.userId });
+    if (!user) {
+        return res.status(401).send({ message: 'Unauthorized access' });
+    }
+
+    req.user = user;
+    next();
+};
+
+// verifyAdmin middleware
+const verifyAdmin = async (req, res, next) => {
+    if (req.user?.role !== 'admin') {
+        return res.status(403).send({ message: 'Forbidden access' });
+    }
+    next();
+};
+
+// verifyWriter middleware
+const verifyWriter = async (req, res, next) => {
+    if (req.user?.role !== 'writer') {
+        return res.status(403).send({ message: 'Forbidden access' });
+    }
+    next();
+};
+
 // ─── EBOOKS API ──────────────────────────────────────────────
 
 // GET all ebooks (search + filter + pagination)
@@ -125,7 +170,7 @@ app.get('/api/my/ebooks', async (req, res) => {
 });
 
 // POST create ebook
-app.post('/api/ebooks', async (req, res) => {
+app.post('/api/ebooks', verifyToken, verifyWriter, async (req, res) => {
     try {
         const ebook = {
             ...req.body,
@@ -141,7 +186,7 @@ app.post('/api/ebooks', async (req, res) => {
 });
 
 // PATCH update ebook
-app.patch('/api/ebooks/:id', async (req, res) => {
+app.patch('/api/ebooks/:id', verifyToken, verifyWriter, async (req, res) => {
     try {
         const result = await ebookCollection.updateOne(
             { _id: new ObjectId(req.params.id) },
@@ -154,7 +199,7 @@ app.patch('/api/ebooks/:id', async (req, res) => {
 });
 
 // DELETE ebook
-app.delete('/api/ebooks/:id', async (req, res) => {
+app.delete('/api/ebooks/:id', verifyToken, verifyWriter, async (req, res) => {
     try {
         const result = await ebookCollection.deleteOne({
             _id: new ObjectId(req.params.id)
@@ -168,12 +213,16 @@ app.delete('/api/ebooks/:id', async (req, res) => {
 // ─── PURCHASES API ───────────────────────────────────────────
 
 // GET user purchases
-app.get('/api/purchases', async (req, res) => {
+app.get('/api/purchases', verifyToken, async (req, res) => {
     try {
         const query = {};
-        if (req.query.userId)  query.userId  = req.query.userId;
-        if (req.query.ebookId) query.ebookId = req.query.ebookId;
-
+        if (req.query.userId) {
+            if (req.user._id.toString() !== req.query.userId &&
+                req.user.role !== 'admin') {
+                return res.status(403).send({ message: 'Forbidden access' });
+            }
+            query.userId = req.query.userId;
+        }
         const purchases = await purchaseCollection
             .find(query)
             .sort({ createdAt: -1 })
@@ -243,7 +292,7 @@ app.delete('/api/bookmarks/:id', async (req, res) => {
 // ─── TRANSACTIONS API ────────────────────────────────────────
 
 // GET all transactions (admin)
-app.get('/api/transactions', async (req, res) => {
+app.get('/api/transactions', verifyToken, verifyAdmin, async (req, res) => {
     try {
         const transactions = await transactionCollection
             .find()
@@ -321,7 +370,7 @@ app.get('/api/writers/top', async (req, res) => {
 });
 
 // GET all users
-app.get('/api/users', async (req, res) => {
+app.get('/api/users', verifyToken, verifyAdmin, async (req, res) => {
     try {
         const users = await userCollection.find().toArray();
         res.send(users);
@@ -331,7 +380,7 @@ app.get('/api/users', async (req, res) => {
 });
 
 // PATCH update user role
-app.patch('/api/users/:id', async (req, res) => {
+app.patch('/api/users/:id', verifyToken, verifyAdmin, async (req, res) => {
     try {
         const result = await userCollection.updateOne(
             { _id: new ObjectId(req.params.id) },
@@ -344,7 +393,7 @@ app.patch('/api/users/:id', async (req, res) => {
 });
 
 // DELETE user
-app.delete('/api/users/:id', async (req, res) => {
+app.delete('/api/users/:id', verifyToken, verifyAdmin, async (req, res) => {
     try {
         const result = await userCollection.deleteOne({
             _id: new ObjectId(req.params.id)
