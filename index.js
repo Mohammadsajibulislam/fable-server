@@ -95,7 +95,9 @@ app.get('/api/ebooks', async (req, res) => {
             ];
         }
 
-        if (req.query.genre) query.genre = req.query.genre;
+       if (req.query.genre) {
+    query.genre = { $regex: new RegExp(`^${req.query.genre}$`, 'i') };
+}
         if (req.query.availability === 'available') query.isSold = false;
         if (req.query.availability === 'sold')      query.isSold = true;
 
