@@ -23,9 +23,11 @@ const client = new MongoClient(process.env.MONGODB_URI, {
     }
 });
 
-client.connect(() => {
-    console.log('Connected to MongoDB!');
-}).catch(console.dir);
+// Connect to MongoDB
+// client.connect(() => {
+//     console.log('Connected to MongoDB!');
+// }).catch(console.dir);
+
 
 const db     = client.db(process.env.DB_NAME);
 const authDb = client.db(process.env.AUTH_DB_NAME);
@@ -167,7 +169,7 @@ app.get('/api/my/ebooks', async (req, res) => {
 });
 
 // POST create ebook
-app.post('/api/ebooks', verifyToken, verifyWriter, async (req, res) => {
+app.post('/api/ebooks', async (req, res) => {
     try {
         const ebook = {
             ...req.body,
@@ -196,7 +198,7 @@ app.patch('/api/ebooks/:id', async (req, res) => {
 });
 
 // DELETE ebook
-app.delete('/api/ebooks/:id', verifyToken, async (req, res) => {
+app.delete('/api/ebooks/:id', async (req, res) => {
     try {
         const result = await ebookCollection.deleteOne({
             _id: new ObjectId(req.params.id)
