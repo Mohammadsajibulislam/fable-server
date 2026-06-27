@@ -335,13 +335,16 @@ app.get('/api/stats', async (req, res) => {
             (sum, t) => sum + (t.amount || 0), 0
         );
 
+        // Real user counts
+        const totalUsers   = await userCollection.countDocuments({ role: 'user' });
+        const totalWriters = await userCollection.countDocuments({ role: 'writer' });
+
         const genrePipeline = [
             { $group: { _id: '$genre', count: { $sum: 1 } } },
             { $project: { genre: '$_id', count: 1, _id: 0 } },
             { $sort: { count: -1 } }
         ];
-        const ebooksByGenre = await ebookCollection
-            .aggregate(genrePipeline).toArray();
+        const ebooksByGenre = await ebookCollection.aggregate(genrePipeline).toArray();
 
         const salesPipeline = [
             {
@@ -352,15 +355,21 @@ app.get('/api/stats', async (req, res) => {
             },
             { $sort: { '_id': 1 } }
         ];
-        const monthlySales = await transactionCollection
-            .aggregate(salesPipeline).toArray();
+        const monthlySales = await transactionCollection.aggregate(salesPipeline).toArray();
 
-        res.send({ totalEbooks, totalSold, totalRevenue, ebooksByGenre, monthlySales });
+        res.send({
+            totalEbooks,
+            totalSold,
+            totalRevenue,
+            totalUsers,
+            totalWriters,
+            ebooksByGenre,
+            monthlySales
+        });
     } catch (err) {
         res.status(500).send({ message: err.message });
     }
 });
-
 // ─── TOP WRITERS ─────────────────────────────────────────────
 
 app.get('/api/writers/top', async (req, res) => {
