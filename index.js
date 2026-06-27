@@ -254,7 +254,7 @@ app.post('/api/purchases', async (req, res) => {
 // ─── BOOKMARKS API ───────────────────────────────────────────
 
 // GET bookmarks
-app.get('/api/bookmarks', verifyToken, async (req, res) => {
+app.get('/api/bookmarks', async (req, res) => {
     try {
         const bookmarks = await bookmarkCollection
             .find({ userId: req.query.userId })
@@ -266,7 +266,7 @@ app.get('/api/bookmarks', verifyToken, async (req, res) => {
 });
 
 // POST add bookmark
-app.post('/api/bookmarks', verifyToken, async (req, res) => {
+app.post('/api/bookmarks', async (req, res) => {
     try {
         const exists = await bookmarkCollection.findOne({
             userId:  req.body.userId,
@@ -285,7 +285,7 @@ app.post('/api/bookmarks', verifyToken, async (req, res) => {
 });
 
 // DELETE bookmark
-app.delete('/api/bookmarks/:id', verifyToken, async (req, res) => {
+app.delete('/api/bookmarks/:id', async (req, res) => {
     try {
         const result = await bookmarkCollection.deleteOne({
             _id: new ObjectId(req.params.id)
