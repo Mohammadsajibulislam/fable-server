@@ -1,4 +1,3 @@
-
 # Fable Server — Express.js Backend
 
 Backend REST API for the Fable ebook sharing platform.
@@ -73,12 +72,3 @@ DB_NAME=fable-db
 AUTH_DB_NAME=fable-auth
 PORT=5000
 ```
-
-## npm Packages Used
-
-| Package | Purpose               |
-| ------- | --------------------- |
-| express | Web framework         |
-| cors    | Cross-origin requests |
-| dotenv  | Environment variables |
-| mongodb | Database driver       |
